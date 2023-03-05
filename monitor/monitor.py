@@ -1,76 +1,47 @@
-import mysql.connector
+from collections import OrderedDict
 import sys
 import os
 import json
-from datetime import datetime
+import dataset
+from datetime import datetime, date
 from slack_sdk import WebClient
 from slack_sdk.errors import SlackApiError
+from db import db
+
 
 slack_client = WebClient(token=os.environ["SLACK_BOT_TOKEN"])
 slack_channel = os.environ["SLACK_CHANNEL_ID"]
 
-def load_db_nearest():
-    cnx = None
-    try:
-        cnx = mysql.connector.connect(
-            user='root',
-            password=os.environ['MYSQL_ROOT_PASSWORD'],
-            host='DB',
-            port='3306',
-            db='Certificates',
-            charset='utf8'
-        )
-        
-        if cnx.is_connected:
-            print("connected!")
-            
-        cursor = cnx.cursor()
-        
-        sql = ('''
-        SELECT *
-        FROM Certificates
-        ORDER BY valid_To ASC
-        ''')
-        
-        cursor.execute(sql)
-        result = cursor.fetchall()
-        ##print(result)
-        return result
-        
-        
-    except Exception as e:
-        print(f"Error Occurred: {e}")
-        
-    finally:
-        if cnx is not None and cnx.is_connected():
-            cnx.close()    
-        
-def calc_remain():
-    today = datetime.now().date()
-    order = load_db_nearest()
-    print(order)
-    
-    list_asc = []
-    list_null = []
-    for row in order:
-        valid_to = row[6]
-        
-        # check NULL
-        if valid_to is not None:
-            # calcurate remaining days
-            remaining_days = (valid_to - today).days
-            # add tupple    
-            list_asc.append(row + (remaining_days,))            
-        else:
-            list_null.append(row)
-        
-    return(list_asc,list_null)
+
+def fetch_entries() -> list[dict]:
+    with db as tx:
+        tx: dataset.Database
+        certificates: dataset.Table = tx["Certificates"]
+        order = certificates.find(order_by=['Valid_To'])
+    return [item for item in order]
+
+def organize_entries(entries: list[dict], base: date = date.today()):
+    thresholds = [0, 14, 30, 90]
+    groups = [[],]
+    empties = []
 
 
-def make_message9(list9):
+def calc_remain(item: dict, base: date = None) -> int | None:
+    valid_to: date = item['Valid_To']
+    if valid_to is None:
+        return None
+    if base is None:
+        base = datetime.now().date()
+    return (valid_to - base).days
+
+
+
+
+
+def make_message9(list9, base: date = None):
     header = "FROM-date, EXPIRY-date, `[残日数 ]`, `調査対象ドメイン   `, common-name        , signature-algorithm    , issuer      , スキャン日時\n"
     format_str = "• {}, {}, `[{:3}days]`, `{:19}`, {:19}, {}, {}, {}\n"
-    
+
     msg_u30=""
     filter_u30 = list(filter(lambda x: 14 <= x[8] <= 30, list9))
     if filter_u30:
@@ -113,6 +84,8 @@ def make_message8(list8):
 
 def post_message():
     try:
+        entries = fetch_entries()
+        
         list_asc,list_null = calc_remain()
         u30,u90,o90 = make_message9(list_asc)
         na = make_message8(list_null)
