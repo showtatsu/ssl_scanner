@@ -9,3 +9,5 @@ click
 validators
 pytest
 slack_sdk
+slack_bolt
+python-dotenv

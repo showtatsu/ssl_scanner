@@ -10,3 +10,5 @@ validators
 pytest
 slack_sdk
 autopep8
+slack_bolt
+python-dotenv

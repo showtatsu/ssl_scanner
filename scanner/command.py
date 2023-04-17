@@ -6,6 +6,7 @@ import typing
 import click
 import re
 import io
+import dotenv
 from datetime import date, datetime
 import ssl_certificate_checker
 import controler
@@ -363,4 +364,5 @@ def load_domains_list(file: io.TextIOWrapper) -> list[str]:
 
 
 if __name__ == '__main__':
+    dotenv.load_dotenv()
     cli()
